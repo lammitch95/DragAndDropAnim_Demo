@@ -5,6 +5,12 @@ package edu.farmingdale.draganddropanim_demo
 import android.content.ClipData
 import android.content.ClipDescription
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.animateIntOffsetAsState
+import androidx.compose.animation.core.repeatable
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
@@ -35,25 +41,60 @@ import androidx.compose.ui.draganddrop.DragAndDropTarget
 import androidx.compose.ui.draganddrop.DragAndDropTransferData
 import androidx.compose.ui.draganddrop.mimeTypes
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ArrowForward
+import androidx.compose.material.icons.filled.Face
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material3.Button
+import androidx.compose.material3.Icon
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Offset.Companion.Infinite
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import edu.farmingdale.draganddropanim_demo.ui.theme.DragAndDropAnim_DemoTheme
 
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun DragAndDropBoxes(modifier: Modifier = Modifier) {
-    Column(modifier = Modifier.fillMaxSize()) {
+    var isPlaying by remember { mutableStateOf(true) }
+    var rectOffset by remember { mutableStateOf(IntOffset(130, 300)) }
+    var dragBoxIndex by remember { mutableIntStateOf(0) }
+    var prevDragIndex by remember { mutableIntStateOf(0)}
+    var hasMoved by remember { mutableStateOf(false)}
+    var flipRotate by remember { mutableStateOf(false) }
+    var parentSize by remember { mutableStateOf(Size.Zero) }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+    ) {
 
         Row(
             modifier = modifier
-                .fillMaxWidth().weight(0.2f)
+                .fillMaxWidth()
+                .weight(0.35f)
         ) {
             val boxCount = 4
-            var dragBoxIndex by remember {
-                mutableIntStateOf(0)
-            }
 
             repeat(boxCount) { index ->
                 Box(
@@ -71,8 +112,11 @@ fun DragAndDropBoxes(modifier: Modifier = Modifier) {
                             target = remember {
                                 object : DragAndDropTarget {
                                     override fun onDrop(event: DragAndDropEvent): Boolean {
-
+                                        isPlaying = !isPlaying
+                                        prevDragIndex = dragBoxIndex
                                         dragBoxIndex = index
+                                        hasMoved = true
+                                        flipRotate = !flipRotate
                                         return true
                                     }
                                 }
@@ -85,12 +129,10 @@ fun DragAndDropBoxes(modifier: Modifier = Modifier) {
                         enter = scaleIn() + fadeIn(),
                         exit = scaleOut() + fadeOut()
                     ) {
-                        Text(
-                            text = "Right",
-                            fontSize = 40.sp,
-                            color = Color.Red,
-                            fontWeight = FontWeight.Bold,
-
+                        Icon(
+                            imageVector = Icons.Default.ArrowForward,
+                            contentDescription = "Icon",
+                            tint = Color.Blue,
                             modifier = Modifier
                                 .fillMaxSize()
                                 .dragAndDropSource {
@@ -99,8 +141,8 @@ fun DragAndDropBoxes(modifier: Modifier = Modifier) {
                                             startTransfer(
                                                 transferData = DragAndDropTransferData(
                                                     clipData = ClipData.newPlainText(
-                                                        "text",
-                                                        ""
+                                                        "drag-icon",
+                                                        "ArrowForward"
                                                     )
                                                 )
                                             )
@@ -108,21 +150,82 @@ fun DragAndDropBoxes(modifier: Modifier = Modifier) {
                                     )
                                 }
                         )
+
+
                     }
                 }
             }
         }
 
-
-        Canvas(
+        Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .weight(0.8f)
+                .weight(0.7f)
                 .background(Color.Red)
-
+                .onSizeChanged { size ->
+                    // Track parent container's size
+                    parentSize = Size(size.width.toFloat(), size.height.toFloat())
+                },
         ) {
-                drawCircle(Color.Green, radius = 50f, center = Offset(100f, 100f))
-       }
+
+
+            if(hasMoved){
+                val moveDistance = 200
+                rectOffset = when {
+                    dragBoxIndex < prevDragIndex -> IntOffset( rectOffset.x - moveDistance, rectOffset.y)
+                    dragBoxIndex > prevDragIndex -> IntOffset(rectOffset.x + moveDistance , rectOffset.y)
+                    else -> rectOffset
+                }
+                hasMoved = false
+
+            }
+
+            val rectRotation by animateFloatAsState(
+                targetValue = if (flipRotate) 360f else 0f,
+                animationSpec = repeatable(
+                    iterations =  1,
+                    animation = tween(durationMillis = 3000, easing = LinearEasing),
+                    repeatMode = RepeatMode.Restart
+                ),
+                label = ""
+            )
+
+
+
+
+            println("New rectOffset $rectOffset")
+
+            Box(
+                modifier = Modifier
+                    .offset { rectOffset }
+                    .rotate(rectRotation)
+                    .size(55.dp, 100.dp)
+                    .background(Color.Green)
+            )
+        }
+
+        // Reset button
+        Button(
+            onClick = {
+                isPlaying = false
+                rectOffset = IntOffset(
+                    x = (parentSize.width / 2 - 55/ 2).toInt(),
+                    y = (parentSize.height / 2 - 100 / 2).toInt()
+                )
+            },
+            modifier = Modifier.align(Alignment.CenterHorizontally)
+        ) {
+            Text("Reset")
+        }
+
+    }
+}
+
+@Preview(showBackground = true)
+@Composable
+fun DragAndDropPreview() {
+    DragAndDropAnim_DemoTheme {
+        DragAndDropBoxes(modifier = Modifier)
     }
 }
 
